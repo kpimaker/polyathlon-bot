@@ -6,6 +6,8 @@
 Пример: 94 1:03.5 47.4 12.2 10:18.4
 */
 
+$p = json_decode( file_get_contents('/var/www/html/table_5.json'), true);
+
 function checkForCorrectInput( $message ) {
 	/* 
 	Функция проверки сообщения на корректный формат. Возвращает итоговый результат проверки сообщения.
@@ -210,16 +212,16 @@ function checkForCorrectInput( $message ) {
 	if ( count( $dec ) == $correctResultsNumber ) {
 
 		# проверка первого результата (стрельба) на корректность
-		# array_push( $checkTotal, checkShootingResult( $dec[0] ) );
+		array_push( $checkTotal, checkShootingResult( $dec[0] ) );
 
 		# проверка второго результата (плавание) на корректность
-		# array_push( $checkTotal, checkSwimResult( $dec[1] ) );
+		array_push( $checkTotal, checkSwimResult( $dec[1] ) );
 
 		# проверка третьего результата (граната) на корректность
-		# array_push( $checkTotal, checkGrenadeResult( $dec[2] ) );
+		array_push( $checkTotal, checkGrenadeResult( $dec[2] ) );
 
 		# проверка четвертого результата (спринт) на корректность
-		# array_push( $checkTotal, checkSprintResult( $dec[3] ) );
+		array_push( $checkTotal, checkSprintResult( $dec[3] ) );
 
 		# пятый результат (выносливость) и корректность
 		array_push( $checkTotal, checkCrossResult( $dec[4] ) );
@@ -397,7 +399,7 @@ function checkCrossResult( $crossResult ) {
 
 	$cross = preg_split( "/(\.|,|:|;)/" , $crossResult );
 
-	# введен результат в формате 1:03.5
+	# введен результат в формате 10:18.4
 	if ( count( $cross ) == 3 ) {
 
 		# проверка на целочисленность
@@ -417,7 +419,7 @@ function checkCrossResult( $crossResult ) {
 			return array( 'type' => 'cross', 'status' => 'Некорректный формат результата бега на выносливость' );
 		}
 	
-	# введен результат в формате 59.3
+	# введен результат в формате 10:18
 	} elseif ( count( $cross ) == 2 ) {
 
 		# проверка на целочисленность
@@ -441,5 +443,204 @@ function checkCrossResult( $crossResult ) {
 	}
 }
 
-# $message = '94 1:03.5 47.4 12.2 10:18.4';
-var_dump( checkForCorrectInput( '94 58.4 47 12.2 10:18ё.4' ) );
+function calculateScoreShooting( $type, $result, $p ) {
+	foreach ( $p[$type] as $line ) {
+		if ( floatval( $line['result'] ) == floatval( $result ) ) {
+	return $line['points'];
+		}
+	}
+
+	// если не нашли результата
+	return 0;
+}
+
+function calculateScore( $type, $result, $p ) {
+	$started = True;
+
+	// вычисляемые очки
+	$scoreW = 0;
+	$scoreM = 0;
+
+	//writeLogs( $type ."\n". $result );
+
+	if ( is_array( $p[$type] ) ) {
+
+		foreach ( $p[$type] as $line ) {
+
+			$currentResultW = $line['resultW'];
+			$currentResultM = $line['resultM'];
+
+			if ( $started == True ) {
+				$prevResultW = $currentResultW;
+				$prevResultM = $currentResultM;
+
+				$started = False;
+
+				// проверяем граничные значения на 112 очков у женщин
+				if ( $currentResultW == $result ) {
+					$scoreW = $line['points'];
+				}
+
+				// проверяем граничные значения на 112 очков у мужчин
+				if ( $currentResultM == $result ) {
+					$scoreM = $line['points'];
+				}
+
+			} else {
+
+				if ( $type == 'граната' ) {
+					// проверяем соответствие женскому результату
+					if ( floatval( $prevResultW ) > floatval( $result ) and floatval( $result ) >= floatval( $currentResultW ) ) {
+					$scoreW = $line['points'];
+					}
+
+					// проверяем соответствие мужскому результату
+					if ( floatval( $prevResultM ) > floatval( $result ) and floatval( $result ) >= floatval( $currentResultM ) ) {
+						$scoreM = $line['points'];
+					}
+				}
+
+				if ( ( $type == 'плавание' ) or ( $type == 'спринт' ) or ( $type == 'кросс' ) ) {
+					// проверяем соответствие женскому результату
+					if ( floatval( $prevResultW ) < floatval( $result ) and floatval( $result ) <= floatval( $currentResultW ) ) {
+						$scoreW = $line['points'];
+					}
+
+					// проверяем соответствие мужскому результату
+					if ( floatval( $prevResultM ) < floatval( $result ) and floatval( $result ) <= floatval( $currentResultM ) ) {
+						$scoreM = $line['points'];
+					}
+				}
+
+				$prevResultW = $currentResultW;
+				$prevResultM = $currentResultM;
+			}
+		}
+	}
+
+	return array( 'scoreW' => $scoreW, 'scoreM' => $scoreM );
+}
+
+function readMessage( $message, $p ) {
+	/* проверяем сообщение на корректность
+	array(5) {
+	  [0]=>
+	  array(2) {
+	    ["type"]=>
+	    string(8) "shooting"
+	    ["status"]=>
+	    string(2) "Ok"
+	  }
+	  [1]=>
+	  array(2) {
+	    ["type"]=>
+	    string(4) "swim"
+	    ["status"]=>
+	    string(2) "Ok"
+	  }
+	  [2]=>
+	  array(2) {
+	    ["type"]=>
+	    string(7) "grenade"
+	    ["status"]=>
+	    string(2) "Ok"
+	  }
+	  [3]=>
+	  array(2) {
+	    ["type"]=>
+	    string(6) "sprint"
+	    ["status"]=>
+	    string(2) "Ok"
+	  }
+	  [4]=>
+	  array(2) {
+	    ["type"]=>
+	    string(5) "cross"
+	    ["status"]=>
+	    string(2) "Ok"
+	  }
+	}
+	*/
+	$correct = checkForCorrectInput( $message );
+
+	foreach ( $correct as $key => $value ) {
+		if ( $value['status'] != 'Ok' ) {
+			return $value['status'];
+		}
+	}
+
+	$dec = explode( " ", $message );
+
+	$shooting = $dec[0];
+	$shootingPoints = calculateScoreShooting( 'стрельба', $shooting, $p );
+
+	$swim = $dec[1];
+	$swimArray = preg_split( "/(\.|,|:|;)/" , $swim );
+	
+	# результат быстрее минуты
+	if ( count( $swimArray ) == 2 ) {
+		if ( (int)$swimArray[1] <= 9 ) {
+			$swimPoints = calculateScore( 'плавание', (int)$swimArray[0] + (int)$swimArray[1] / 10, $p );
+		} else {
+			$swimPoints = calculateScore( 'плавание', (int)$swimArray[0] + (int)$swimArray[1] / 100, $p );			
+		}
+
+	# результат медленнее минуты
+	} elseif ( count( $swimArray ) == 3 ) {
+		if ( (int)$swimArray[2] <= 9 ) {
+			$swimPoints = calculateScore( 'плавание', (int)$swimArray[0] * 60 + (int)$swimArray[1] + (int)$swimArray[2] / 10, $p );
+		} else {
+			$swimPoints = calculateScore( 'плавание', (int)$swimArray[0] * 60 + (int)$swimArray[1] + (int)$swimArray[2] / 100, $p );
+		}
+	}
+
+	$grenade = $dec[2];
+	$grenadeArray = preg_split( "/(\.|,|:|;)/" , $grenade );
+
+	# результат в формате 47.4
+	if ( count( $grenadeArray ) == 2 ) {
+		if ( (int)$grenadeArray[1] <= 9 ) {
+			$grenadePoints = calculateScore( 'граната', (int)$grenadeArray[0] + (int)$grenadeArray[1] / 10, $p );
+		} else {
+			$grenadePoints = calculateScore( 'граната', (int)$grenadeArray[0] + (int)$grenadeArray[1] / 100, $p );
+		}
+
+	# результат в формате 47
+	} elseif ( count( $grenadeArray ) == 1 ) {
+		$grenadePoints = calculateScore( 'граната', (int)$grenadeArray[0], $p );
+	}
+
+	$sprint = $dec[3];
+	$sprintArray = preg_split( "/(\.|,|:|;)/" , $sprint );
+	
+	# результат в формате 12.2
+	if ( (int)$sprintArray[1] <= 10 ) {
+		$sprintPoints = calculateScore( 'спринт', (int)$sprintArray[0] + (int)$sprintArray[1] / 10, $p );
+	
+	# результат в формате 12.22
+	} else {
+		$sprintPoints = calculateScore( 'спринт', (int)$sprintArray[0] + (int)$sprintArray[1] / 100, $p );
+	}
+
+	$cross = $dec[4];
+	$crossArray = preg_split( "/(\.|,|:|;)/" , $cross );
+	
+	# результат в формате 10:18
+	if ( count( $crossArray ) == 2 ) {
+		$crossPoints = calculateScore( 'кросс', (int)$crossArray[0] * 60 + (int)$crossArray[1], $p );
+	
+	# результат в формате 10:18.4
+	} else {
+		if ( (int)$crossArray[2] <= 9 ) {
+			$crossPoints = calculateScore( 'кросс', (int)$crossArray[0] * 60 + (int)$crossArray[1] + (int)$crossArray[2] / 10, $p );
+		} else {
+			$crossPoints = calculateScore( 'кросс', (int)$crossArray[0] * 60 + (int)$crossArray[1] + (int)$crossArray[2] / 100, $p );
+		}
+	}
+
+	return $crossPoints;
+}
+
+$message = '94 1:03.49 47.4 12.22 10:18.4';
+# var_dump( checkForCorrectInput( '94 58.4 47 12.2 10:18.4' ) );
+var_dump( readMessage( $message, $p ) );
